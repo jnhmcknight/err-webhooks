@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import requests
 
 from errbot.templating import tenv
 
@@ -31,7 +32,7 @@ class CommonGitWebProvider(object):
         return message
 
     def render_template(self, template='generic', **kwargs):
-        kwargs['repo_name'] = kwargs.get('repo_name') or self.name
+        kwargs['provider'] = kwargs.get('provider') or self.name
         return tenv().get_template('{0}.html'.format(template)).render(**kwargs)
 
     def msg_generic(self, body, repo, event_type):
@@ -41,6 +42,18 @@ class CommonGitWebProvider(object):
 
 class GithubHandlers(CommonGitWebProvider):
     name = 'Github'
+
+    def create_message(self, body, event_type, repo):
+        # We only want the shortname of the repo displayed in the created message
+        repo = self.get_repo_short(body)
+        return super(GithubHandlers, self).create_message(body, mapped_event_type, repo)
+
+    def _shorten_url(self, url):
+        resp = requests.post('https://git.io', data={'url': url}, allow_redirects=False)
+        if resp.headers.get('Location'):
+            return resp.headers.get('Location')
+        return url
+
 
     @staticmethod
     def valid_message(request, token):
@@ -70,6 +83,9 @@ class GithubHandlers(CommonGitWebProvider):
     def get_repo(self, body):
         return body['repository']['full_name']
 
+    def get_repo_short(self, body):
+        return body['repository']['name']
+
     def msg_issues(self, body, repo):
         return self.render_template(
             template='issues', body=body, repo=repo,
@@ -77,7 +93,7 @@ class GithubHandlers(CommonGitWebProvider):
             number=body['issue']['number'],
             title=body['issue']['title'],
             user=body['issue']['user']['login'],
-            url=body['issue']['url'],
+            url=self._shorten_url(body['issue']['url']),
             is_assigned=body['issue']['assignee'],
             assignee=body['issue']['assignee']['login'] if body['issue']['assignee'] else None
         )
@@ -95,7 +111,7 @@ class GithubHandlers(CommonGitWebProvider):
             template='pull_request', body=body, repo=repo,
             action=action, user=user,
             number=body['pull_request']['number'],
-            url=body['pull_request']['html_url'],
+            url=self._shorten_url(body['pull_request']['html_url']),
             merged=body['pull_request']['merged'],
         )
 
@@ -105,18 +121,36 @@ class GithubHandlers(CommonGitWebProvider):
             action='commented' if body['action'] == 'created' else body['action'],
             user=body['comment']['user']['login'],
             line=body['comment']['position'],
-            l_url=body['comment']['html_url'],
+            l_url=self._shorten_url(body['comment']['html_url']),
             pr=body['pull_request']['number'],
-            url=body['pull_request']['html_url'],
+            url=self._shorten_url(body['pull_request']['html_url']),
         )
 
     def msg_push(self, body, repo):
+        if body['created']:
+            pushed = "created branch with"
+        elif body['forced']:
+            pushed = "force pushed"
+        elif body['deleted']:
+            pushed = "deleted branch"
+        else:
+            pushed = "pushed"
+
+        commit_messages = []
+        for c in body['commits']:
+            commit_messages.append(
+                {'msg': c['message'][:80].split('\n')[0],
+                 'hash': c['id'][:8],
+                 'url': self._shorten_url(c['url'])})
+
         return self.render_template(
             template='push', body=body, repo=repo,
+            pushed=pushed,
             user=body['pusher']['name'],
             commits=len(body['commits']),
             branch=body['ref'].split('/')[-1],
-            url=body['compare'],
+            url=self._shorten_url(body['compare']),
+            commit_messages=commit_messages,
         )
 
     def msg_status(*args):
@@ -131,14 +165,14 @@ class GithubHandlers(CommonGitWebProvider):
             user=body['comment']['user']['login'],
             number=body['issue']['number'],
             title=body['issue']['title'],
-            url=body['issue']['html_url'],
+            url=self._shorten_url(body['issue']['html_url']),
         )
 
     def msg_commit_comment(self, body, repo):
         return self.render_template(
             template='commit_comment', body=body, repo=repo,
             user=body['comment']['user']['login'],
-            url=body['comment']['html_url'],
+            url=self._shorten_url(body['comment']['html_url']),
             line=body['comment']['line'],
             sha=body['comment']['commit_id'],
         )
@@ -185,6 +219,7 @@ class GitLabHandlers(CommonGitWebProvider):
 
         return self.render_template(
             template='push', body=body, repo=repo,
+            pushed="pushed",
             user=body['user_name'],
             commits=len(body['commits']),
             branch='/'.join(body['ref'].split('/')[2:]),

@@ -1,16 +1,17 @@
 {%- if action in ['opened', 'closed', 'reopened'] -%}
-    \[{{repo_name}}] \[{{repo}}] issue {{url}} ({{title}}) {{action}} by {{user}}
+    {%- set message = "issue "+url+" ("+title+" "+action+" by "+user" -%}
 {%- elif action in ['labeled', 'unlabeled'] %}
     {%- if action == 'labeled' -%}
         {%- set act_value = 'added to' -%}
     {%- else -%}
         {%- set act_value = 'removed from' -%}
     {%- endif -%}
-    \[{{repo_name}}] \[{{repo}}] label {{act_value}} issue {{url}} ({{title}}) by {{user}}.
+    {%- set message = "label "+act_value+" issue "+url+" ("+title+" by "+user -%}
 {%- elif action == 'assigned' -%}
-    \[{{repo_name}}] \[{{repo}}] issue {{url}} ({{title}}) {{action}} to {{assignee}} by {{user}}.
+    {%- set message = "issue "+url+" ("+title+" "+action+" to "+assignee+" by "+user -%}
 {%- elif action == 'unassigned' or action == 'updated' -%}
-    \[{{repo_name}}] \[{{repo}}] issue {{url}} ({{title}}) {{action}} by {{user}}.
+    {%- set message = "issue "+url+" ("+title+" "+action+" by "+user -%}
 {%- else -%}
-    \[{{repo_name}}] \[{{repo}}] unknown action: {{action}} for event type: issue received.
+    {%- set message = "unknown action: "+action+" for event type: issue received." -%}
 {%- endif -%}
+\[{{provider}}:{{repo}}] {{message}}

@@ -358,6 +358,7 @@ class RepoHook(BotPlugin):
             provider = getattr(self, 'gitlab')
 
         body = request.json
+        self.log.debug('Webhook payload: {}'.format(body))
 
         if event_type == 'ping':
             self.log.info('Received ping event triggered by {0}'.format(body['hook']['url']))
